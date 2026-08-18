@@ -11,7 +11,7 @@ buildscript {
 }
 
 version "0.1"
-group "payment.processing.service"
+group "payment.processing"
 
 apply plugin:"eclipse"
 apply plugin:"idea"

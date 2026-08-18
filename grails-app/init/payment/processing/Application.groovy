@@ -1,4 +1,4 @@
-package payment.processing.service
+package payment.processing
 
 import grails.boot.GrailsApp
 import grails.boot.config.GrailsAutoConfiguration

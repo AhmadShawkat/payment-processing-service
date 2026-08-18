@@ -2,7 +2,7 @@
 grails:
     profile: rest-api
     codegen:
-        defaultPackage: payment.processing.service
+        defaultPackage: payment.processing
     gorm:
         reactor:
             # Whether to translate GORM events into Reactor events
