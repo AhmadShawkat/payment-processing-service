@@ -1,0 +1,511 @@
+openapi: 3.0.3
+info:
+  title: Payment Processing Service API
+  version: 0.1.0
+  description: |
+    REST API for registering merchants and managing merchant-owned payment
+    transactions. Payment endpoints authenticate merchants with the
+    `X-API-KEY` request header.
+  contact:
+    name: Block Builders Technical Task
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+tags:
+  - name: Merchants
+    description: Merchant registration
+  - name: Payments
+    description: Payment creation, retrieval, capture, refund, and listing
+security:
+  - ApiKeyAuth: []
+paths:
+  /api/merchants:
+    post:
+      tags:
+        - Merchants
+      summary: Create a merchant
+      description: |
+        Registers an active merchant, normalizes its email address, and
+        returns a newly generated API key.
+      operationId: createMerchant
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMerchantRequest'
+            example:
+              name: Test Store
+              email: store@test.com
+      responses:
+        '201':
+          description: Merchant created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MerchantResponse'
+              example:
+                id: 1
+                name: Test Store
+                email: store@test.com
+                apiKey: generated-api-key
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: A merchant with the normalized email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                errorCode: '04'
+                error: A merchant with this email already exists
+
+  /api/payments:
+    post:
+      tags:
+        - Payments
+      summary: Create a payment
+      description: |
+        Creates a payment for the authenticated merchant. The external
+        reference is globally unique and every new payment starts as
+        `PENDING`.
+      operationId: createPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+            example:
+              reference: INV-10001
+              amount: 120.50
+              currency: USD
+              description: Order payment
+      responses:
+        '201':
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/AuthenticationError'
+        '409':
+          description: The payment reference already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example:
+                errorCode: '04'
+                error: A payment with this reference already exists
+    get:
+      tags:
+        - Payments
+      summary: List merchant payments
+      description: |
+        Returns only payments owned by the authenticated merchant, ordered by
+        creation date descending. All filters are optional and can be combined.
+      operationId: listPayments
+      parameters:
+        - $ref: '#/components/parameters/StatusFilter'
+        - $ref: '#/components/parameters/FromDateFilter'
+        - $ref: '#/components/parameters/ToDateFilter'
+        - $ref: '#/components/parameters/MaxParameter'
+        - $ref: '#/components/parameters/OffsetParameter'
+      responses:
+        '200':
+          description: Merchant payment page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentPageResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/AuthenticationError'
+
+  /api/payments/{reference}:
+    parameters:
+      - $ref: '#/components/parameters/PaymentReference'
+    get:
+      tags:
+        - Payments
+      summary: Get payment details
+      description: |
+        Retrieves a payment only when it belongs to the authenticated merchant.
+        A payment owned by another merchant is treated as not found.
+      operationId: getPayment
+      responses:
+        '200':
+          description: Payment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '401':
+          $ref: '#/components/responses/AuthenticationError'
+        '404':
+          $ref: '#/components/responses/PaymentNotFound'
+
+  /api/payments/{reference}/capture:
+    parameters:
+      - $ref: '#/components/parameters/PaymentReference'
+    post:
+      tags:
+        - Payments
+      summary: Capture a payment
+      description: |
+        Changes an owned payment from `PENDING` to `SUCCESS`. The operation is
+        transactional and rejects every other starting status.
+      operationId: capturePayment
+      responses:
+        '200':
+          description: Payment captured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '401':
+          $ref: '#/components/responses/AuthenticationError'
+        '404':
+          $ref: '#/components/responses/PaymentNotFound'
+        '409':
+          description: The payment cannot be captured from its current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                alreadyCaptured:
+                  summary: Payment was already captured
+                  value:
+                    errorCode: '10'
+                    error: Payment already captured
+                invalidStatus:
+                  summary: Payment is not pending
+                  value:
+                    errorCode: '10'
+                    error: Only pending payments can be captured
+
+  /api/payments/{reference}/refund:
+    parameters:
+      - $ref: '#/components/parameters/PaymentReference'
+    post:
+      tags:
+        - Payments
+      summary: Refund a payment
+      description: |
+        Changes an owned payment from `SUCCESS` to `REFUNDED`. The operation is
+        transactional and rejects every other starting status.
+      operationId: refundPayment
+      responses:
+        '200':
+          description: Payment refunded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '401':
+          $ref: '#/components/responses/AuthenticationError'
+        '404':
+          $ref: '#/components/responses/PaymentNotFound'
+        '409':
+          description: The payment cannot be refunded from its current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                alreadyRefunded:
+                  summary: Payment was already refunded
+                  value:
+                    errorCode: '10'
+                    error: Payment already refunded
+                invalidStatus:
+                  summary: Payment is not successful
+                  value:
+                    errorCode: '10'
+                    error: Only successful payments can be refunded
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-KEY
+      description: API key returned when the merchant is created
+
+  parameters:
+    PaymentReference:
+      name: reference
+      in: path
+      required: true
+      description: Globally unique external payment reference
+      schema:
+        type: string
+        minLength: 1
+      example: INV-10001
+    StatusFilter:
+      name: status
+      in: query
+      required: false
+      description: Return only payments with this status
+      schema:
+        $ref: '#/components/schemas/PaymentStatus'
+    FromDateFilter:
+      name: fromDate
+      in: query
+      required: false
+      description: Inclusive lower boundary for the payment creation timestamp
+      schema:
+        type: string
+        format: date-time
+      example: '2026-08-01T00:00:00Z'
+    ToDateFilter:
+      name: toDate
+      in: query
+      required: false
+      description: Inclusive upper boundary for the payment creation timestamp
+      schema:
+        type: string
+        format: date-time
+      example: '2026-08-31T23:59:59Z'
+    MaxParameter:
+      name: max
+      in: query
+      required: false
+      description: Maximum number of payments returned
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+      example: 10
+    OffsetParameter:
+      name: offset
+      in: query
+      required: false
+      description: Number of matching payments skipped
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      example: 0
+
+  responses:
+    AuthenticationError:
+      description: The API key is missing, invalid, or belongs to an inactive merchant
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          examples:
+            missingKey:
+              summary: API key header was omitted
+              value:
+                errorCode: '01'
+                error: API key is required
+            invalidKey:
+              summary: API key does not identify an active merchant
+              value:
+                errorCode: '01'
+                error: Active merchant not found
+    ValidationError:
+      description: Request data or query filters failed validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            errorCode: '02'
+            error: Amount must be greater than zero
+    PaymentNotFound:
+      description: Payment was not found for the authenticated merchant
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            errorCode: '03'
+            error: Payment not found
+
+  schemas:
+    CreateMerchantRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Merchant display name; surrounding whitespace is removed
+          example: Test Store
+        email:
+          type: string
+          format: email
+          minLength: 1
+          description: Unique email; it is trimmed and stored in lowercase
+          example: store@test.com
+
+    MerchantResponse:
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - apiKey
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          example: Test Store
+        email:
+          type: string
+          format: email
+          example: store@test.com
+        apiKey:
+          type: string
+          description: URL-safe Base64 API key generated from 32 secure random bytes
+          example: generated-api-key
+
+    CreatePaymentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - reference
+        - amount
+        - currency
+      properties:
+        reference:
+          type: string
+          minLength: 1
+          description: Globally unique external reference; surrounding whitespace is removed
+          example: INV-10001
+        amount:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          description: Positive payment amount stored with precision 19 and scale 4
+          example: 120.50
+        currency:
+          type: string
+          minLength: 1
+          description: Currency value; it is trimmed and converted to uppercase
+          example: USD
+        description:
+          type: string
+          nullable: true
+          description: Optional payment description; surrounding whitespace is removed
+          example: Order payment
+
+    PaymentStatus:
+      type: string
+      enum:
+        - PENDING
+        - SUCCESS
+        - FAILED
+        - REFUNDED
+      example: PENDING
+
+    PaymentResponse:
+      type: object
+      required:
+        - id
+        - reference
+        - amount
+        - currency
+        - status
+        - merchantId
+        - dateCreated
+        - lastUpdated
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        reference:
+          type: string
+          example: INV-10001
+        amount:
+          type: number
+          format: double
+          example: 120.50
+        currency:
+          type: string
+          example: USD
+        description:
+          type: string
+          nullable: true
+          example: Order payment
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        merchantId:
+          type: integer
+          format: int64
+          example: 1
+        dateCreated:
+          type: string
+          format: date-time
+          example: '2026-08-18T12:00:00Z'
+        lastUpdated:
+          type: string
+          format: date-time
+          example: '2026-08-18T12:00:00Z'
+
+    PaymentPageResponse:
+      type: object
+      required:
+        - payments
+        - max
+        - offset
+        - total
+      properties:
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentResponse'
+        max:
+          type: integer
+          minimum: 1
+          maximum: 100
+          example: 10
+        offset:
+          type: integer
+          minimum: 0
+          example: 0
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Total matching payments before pagination
+          example: 1
+
+    ApiError:
+      type: object
+      required:
+        - errorCode
+        - error
+      properties:
+        errorCode:
+          type: string
+          enum:
+            - '01'
+            - '02'
+            - '03'
+            - '04'
+            - '10'
+          example: '10'
+        error:
+          type: string
+          example: Payment already captured

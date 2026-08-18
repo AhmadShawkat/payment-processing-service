@@ -1,0 +1,15 @@
+.git
+.gitignore
+.gradle
+.idea
+build
+out
+tmp
+*.iml
+*.ipr
+*.iws
+.project
+.settings
+.classpath
+Thumbs.db
+.DS_Store
