@@ -11,9 +11,10 @@ import payment.processing.dto.PaymentResponse
 class PaymentService {
 
     MerchantService merchantService
+    RequestValidationService requestValidationService
 
     PaymentResponse create(String apiKey, CreatePaymentCommand command) {
-        validate(command)
+        requestValidationService.validate(command, 'Payment request is required')
         Merchant merchant = merchantService.requireActiveMerchant(apiKey)
 
         String normalizedReference = command.reference.trim()
@@ -78,7 +79,7 @@ class PaymentService {
     @ReadOnly
     PaymentPageResponse list(String apiKey, ListPaymentsCommand command) {
         ListPaymentsCommand filters = command ?: new ListPaymentsCommand()
-        validate(filters)
+        requestValidationService.validate(filters, 'Payment filters are required')
         Merchant merchant = merchantService.requireActiveMerchant(apiKey)
 
         def result = PaymentTransaction.createCriteria().list(
@@ -108,26 +109,6 @@ class PaymentService {
                 offset: filters.offset,
                 total: result.totalCount as Long
         )
-    }
-
-    private static void validate(CreatePaymentCommand command) {
-        if (command == null) {
-            throw new IllegalArgumentException('Payment request is required')
-        }
-
-        if (!command.validate()) {
-            throw new IllegalArgumentException(
-                    command.errors.allErrors*.defaultMessage.join(', ')
-            )
-        }
-    }
-
-    private static void validate(ListPaymentsCommand command) {
-        if (!command.validate()) {
-            throw new IllegalArgumentException(
-                    command.errors.allErrors*.defaultMessage.join(', ')
-            )
-        }
     }
 
     private static PaymentTransaction findOwnedPayment(

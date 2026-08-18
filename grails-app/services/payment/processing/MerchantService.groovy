@@ -14,8 +14,10 @@ class MerchantService {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom()
 
+    RequestValidationService requestValidationService
+
     MerchantResponse create(CreateMerchantCommand command) {
-        validate(command)
+        requestValidationService.validate(command, 'Merchant request is required')
 
         String normalizedEmail = command.email.trim().toLowerCase(Locale.ROOT)
         if (Merchant.findByEmail(normalizedEmail)) {
@@ -46,18 +48,6 @@ class MerchantService {
         }
 
         merchant
-    }
-
-    private static void validate(CreateMerchantCommand command) {
-        if (command == null) {
-            throw new IllegalArgumentException('Merchant request is required')
-        }
-
-        if (!command.validate()) {
-            throw new IllegalArgumentException(
-                    command.errors.allErrors*.defaultMessage.join(', ')
-            )
-        }
     }
 
     private String generateUniqueApiKey() {
