@@ -14,7 +14,7 @@ class Merchant {
 
     static constraints = {
         name blank: false
-        email blank: false, unique: true
+        email blank: false, unique: true, email: true
         apiKey blank: false, unique: true
     }
 }
