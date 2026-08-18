@@ -1,6 +1,5 @@
 package payment.processing.dto
 
-import payment.processing.PaymentStatus
 import payment.processing.PaymentTransaction
 
 class PaymentResponse {
@@ -10,7 +9,7 @@ class PaymentResponse {
     BigDecimal amount
     String currency
     String description
-    PaymentStatus status
+    String status
     Long merchantId
     Date dateCreated
     Date lastUpdated
@@ -22,7 +21,7 @@ class PaymentResponse {
                 amount: payment.amount,
                 currency: payment.currency,
                 description: payment.description,
-                status: payment.status,
+                status: payment.status.name(),
                 merchantId: payment.merchant.id,
                 dateCreated: payment.dateCreated,
                 lastUpdated: payment.lastUpdated
