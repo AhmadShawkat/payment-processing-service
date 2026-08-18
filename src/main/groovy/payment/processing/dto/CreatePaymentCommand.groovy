@@ -11,7 +11,11 @@ class CreatePaymentCommand implements Validateable {
 
     static constraints = {
         reference blank: false
-        amount nullable: false, min: 0.01G
+        amount nullable: false, validator: { value ->
+            if (value != null && value <= 0) {
+                return 'amount.invalid'
+            }
+        }
         currency blank: false
         description nullable: true
     }

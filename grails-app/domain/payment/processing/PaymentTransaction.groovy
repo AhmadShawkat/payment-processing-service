@@ -13,6 +13,10 @@ class PaymentTransaction {
 
     static belongsTo = [merchant: Merchant]
 
+    static mapping = {
+        amount precision: 19, scale: 4
+    }
+
     static constraints = {
         reference blank: false, unique: true
         amount nullable: false, validator: { value ->
