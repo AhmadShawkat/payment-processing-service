@@ -1,4 +1,4 @@
-package payment.processing.service
+package payment.processing
 
 import grails.core.GrailsApplication
 import grails.plugins.*

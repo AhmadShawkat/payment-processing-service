@@ -1,4 +1,4 @@
-package payment.processing.service
+package payment.processing
 
 class BootStrap {
 
