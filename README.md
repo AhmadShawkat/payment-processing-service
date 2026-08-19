@@ -128,7 +128,7 @@ The integration tests start the real Grails application on a random port and exe
 
 All API responses use `application/json`.
 
-The complete OpenAPI 3.0 specification is available in [`openapi.yaml`](openapi.yaml). It can be imported into [Swagger Editor](https://editor.swagger.io/) or another OpenAPI-compatible client to inspect the schemas and execute requests against a running local service.
+The complete OpenAPI 3.0.3 specification is available in [`openapi.yaml`](openapi.yaml). It can be imported into [Swagger Editor](https://editor.swagger.io/), Postman, or another OpenAPI-compatible tool to inspect the API and generate a client collection. Swagger UI is not embedded in the service.
 
 | Method | Endpoint | Authentication | Description |
 | --- | --- | --- | --- |
@@ -516,6 +516,5 @@ For a production deployment, consider adding:
 - Idempotency handling for retries
 - An external payment-provider integration
 - Structured logging, metrics, tracing, and alerting
-- OpenAPI documentation
-- Containerization and deployment configuration
+- Production deployment configuration, persistent storage, and health probes
 - Additional concurrency, security, and failure-recovery tests
