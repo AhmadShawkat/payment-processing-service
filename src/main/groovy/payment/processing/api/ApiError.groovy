@@ -18,7 +18,6 @@ enum ApiError {
     MERCHANT_EMAIL_EXISTS('04', HttpStatus.CONFLICT, 'A merchant with this email already exists'),
     PAYMENT_REFERENCE_EXISTS('04', HttpStatus.CONFLICT, 'A payment with this reference already exists'),
 
-    PAYMENT_ALREADY_CAPTURED('10', HttpStatus.CONFLICT, 'Payment already captured'),
     CAPTURE_REQUIRES_PENDING('10', HttpStatus.CONFLICT, 'Only pending payments can be captured'),
     PAYMENT_ALREADY_REFUNDED('10', HttpStatus.CONFLICT, 'Payment already refunded'),
     REFUND_REQUIRES_SUCCESS('10', HttpStatus.CONFLICT, 'Only successful payments can be refunded')

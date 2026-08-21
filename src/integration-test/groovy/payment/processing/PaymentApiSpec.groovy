@@ -7,6 +7,12 @@ import org.springframework.http.MediaType
 import spock.lang.Specification
 
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
 
 @Integration
 class PaymentApiSpec extends Specification {
@@ -153,6 +159,41 @@ class PaymentApiSpec extends Specification {
         paymentStatus('INV-10001') == PaymentStatus.REFUNDED
     }
 
+    void 'concurrent capture requests are idempotent'() {
+        given:
+        Map merchant = createMerchant('Concurrent Store', 'concurrent@test.com')
+        String apiKey = merchant.apiKey
+        Map payment = json(createPayment(apiKey, paymentBody('INV-CONCURRENT', 75)))
+        ExecutorService executor = Executors.newFixedThreadPool(2)
+        CountDownLatch ready = new CountDownLatch(2)
+        CountDownLatch start = new CountDownLatch(1)
+
+        when:
+        List<Future<ApiResult>> futures = (1..2).collect {
+            executor.submit({
+                ready.countDown()
+                start.await(5, TimeUnit.SECONDS)
+                postRequest('/api/payments/INV-CONCURRENT/capture', apiKey)
+            } as Callable<ApiResult>)
+        }
+        assert ready.await(5, TimeUnit.SECONDS)
+        start.countDown()
+        List<ApiResult> results = futures.collect { Future<ApiResult> future ->
+            future.get(15, TimeUnit.SECONDS)
+        }
+        List<Map> responses = results.collect { ApiResult result -> json(result) }
+
+        then:
+        results*.status == [200, 200]
+        responses*.id == [payment.id, payment.id]
+        responses*.status == ['SUCCESS', 'SUCCESS']
+        paymentStatus('INV-CONCURRENT') == PaymentStatus.SUCCESS
+        paymentVersion('INV-CONCURRENT') == 1L
+
+        cleanup:
+        executor.shutdownNow()
+    }
+
     void 'payment validation rejects non-positive amounts and duplicate references'() {
         given:
         String apiKey = createMerchant('Validation Store', 'validation@test.com').apiKey
@@ -201,16 +242,21 @@ class PaymentApiSpec extends Specification {
                 error    : 'Only successful payments can be refunded'
         ]
 
-        when: 'a payment is captured twice'
-        postRequest('/api/payments/INV-STATE/capture', owner.apiKey as String)
+        when: 'a successful capture is repeated'
+        ApiResult firstCapture = postRequest(
+                '/api/payments/INV-STATE/capture',
+                owner.apiKey as String
+        )
         ApiResult secondCapture = postRequest(
                 '/api/payments/INV-STATE/capture',
                 owner.apiKey as String
         )
 
         then:
-        secondCapture.status == 409
-        json(secondCapture) == [errorCode: '10', error: 'Payment already captured']
+        firstCapture.status == 200
+        secondCapture.status == 200
+        json(secondCapture) == json(firstCapture)
+        json(secondCapture).status == 'SUCCESS'
 
         when: 'another merchant tries to retrieve the payment'
         ApiResult wrongOwner = getRequest(
@@ -371,6 +417,12 @@ class PaymentApiSpec extends Specification {
     private static PaymentStatus paymentStatus(String reference) {
         PaymentTransaction.withNewTransaction {
             PaymentTransaction.findByReference(reference).status
+        }
+    }
+
+    private static Long paymentVersion(String reference) {
+        PaymentTransaction.withNewTransaction {
+            PaymentTransaction.findByReference(reference).version as Long
         }
     }
 

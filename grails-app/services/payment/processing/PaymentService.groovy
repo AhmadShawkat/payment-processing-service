@@ -2,6 +2,7 @@ package payment.processing
 
 import grails.gorm.transactions.ReadOnly
 import grails.gorm.transactions.Transactional
+import org.springframework.dao.OptimisticLockingFailureException
 import payment.processing.api.ApiError
 import payment.processing.api.ApiException
 import payment.processing.dto.CreatePaymentCommand
@@ -9,12 +10,13 @@ import payment.processing.dto.ListPaymentsCommand
 import payment.processing.dto.PaymentPageResponse
 import payment.processing.dto.PaymentResponse
 
-@Transactional
 class PaymentService {
 
     MerchantService merchantService
+    PaymentStateTransitionService paymentStateTransitionService
     RequestValidationService requestValidationService
 
+    @Transactional
     PaymentResponse create(String apiKey, CreatePaymentCommand command) {
         requestValidationService.validate(command, ApiError.PAYMENT_REQUEST_REQUIRED)
         Merchant merchant = merchantService.requireActiveMerchant(apiKey)
@@ -42,49 +44,33 @@ class PaymentService {
     PaymentResponse capture(String apiKey, String reference) {
         Merchant merchant = merchantService.requireActiveMerchant(apiKey)
 
-        PaymentTransaction payment = findOwnedPayment(reference, merchant, true)
-
-        // TODO : ***
-        // unique ( merchant , reference)
-
-        //change the lock to optmestice and help
-        if (payment.status != PaymentStatus.PENDING) {
-            ApiError error = payment.status == PaymentStatus.SUCCESS
-                    ? ApiError.PAYMENT_ALREADY_CAPTURED
-                    : ApiError.CAPTURE_REQUIRES_PENDING
-            throw new ApiException(error)
+        try {
+            return paymentStateTransitionService.capture(merchant.id, reference)
+        } catch (OptimisticLockingFailureException ignored) {
+            return paymentStateTransitionService.resolveCaptureConflict(
+                    merchant.id,
+                    reference
+            )
         }
-
-        payment.status = PaymentStatus.SUCCESS
-
-
-
-        payment.save(failOnError: true, flush: true)
-
-        PaymentResponse.from(payment)
     }
 
     PaymentResponse refund(String apiKey, String reference) {
         Merchant merchant = merchantService.requireActiveMerchant(apiKey)
-        PaymentTransaction payment = findOwnedPayment(reference, merchant, true)
 
-        if (payment.status != PaymentStatus.SUCCESS) {
-            ApiError error = payment.status == PaymentStatus.REFUNDED
-                    ? ApiError.PAYMENT_ALREADY_REFUNDED
-                    : ApiError.REFUND_REQUIRES_SUCCESS
-            throw new ApiException(error)
+        try {
+            return paymentStateTransitionService.refund(merchant.id, reference)
+        } catch (OptimisticLockingFailureException ignored) {
+            return paymentStateTransitionService.resolveRefundConflict(
+                    merchant.id,
+                    reference
+            )
         }
-
-        payment.status = PaymentStatus.REFUNDED
-        payment.save(failOnError: true, flush: true)
-
-        PaymentResponse.from(payment)
     }
 
     @ReadOnly
     PaymentResponse get(String apiKey, String reference) {
         Merchant merchant = merchantService.requireActiveMerchant(apiKey)
-        PaymentResponse.from(findOwnedPayment(reference, merchant, false))
+        PaymentResponse.from(findOwnedPayment(reference, merchant))
     }
 
     @ReadOnly
@@ -126,8 +112,7 @@ class PaymentService {
 
     private static PaymentTransaction findOwnedPayment(
             String reference,
-            Merchant merchant,
-            boolean lock
+            Merchant merchant
     ) {
         if (!reference?.trim()) {
             throw new ApiException(ApiError.PAYMENT_REFERENCE_REQUIRED)
@@ -135,8 +120,7 @@ class PaymentService {
 
         PaymentTransaction payment = PaymentTransaction.findByReferenceAndMerchant(
                 reference.trim(),
-                merchant,
-                [lock: lock]
+                merchant
         )
 
         if (!payment) {
