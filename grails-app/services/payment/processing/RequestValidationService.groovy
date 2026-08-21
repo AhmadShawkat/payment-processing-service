@@ -3,14 +3,16 @@ package payment.processing
 import grails.validation.Validateable
 import org.springframework.context.MessageSource
 import org.springframework.context.i18n.LocaleContextHolder
+import payment.processing.api.ApiError
+import payment.processing.api.ApiException
 
 class RequestValidationService {
 
     MessageSource messageSource
 
-    void validate(Validateable command, String missingRequestMessage) {
+    void validate(Validateable command, ApiError missingRequestError) {
         if (command == null) {
-            throw new IllegalArgumentException(missingRequestMessage)
+            throw new ApiException(missingRequestError)
         }
 
         if (!command.validate()) {
@@ -18,7 +20,10 @@ class RequestValidationService {
                 messageSource.getMessage(error, LocaleContextHolder.locale)
             }
 
-            throw new IllegalArgumentException(messages.unique().join(', '))
+            throw new ApiException(
+                    ApiError.VALIDATION_FAILED,
+                    messages.unique().join(', ')
+            )
         }
     }
 }

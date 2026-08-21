@@ -2,6 +2,8 @@ package payment.processing
 
 import grails.gorm.transactions.ReadOnly
 import grails.gorm.transactions.Transactional
+import payment.processing.api.ApiError
+import payment.processing.api.ApiException
 import payment.processing.dto.CreatePaymentCommand
 import payment.processing.dto.ListPaymentsCommand
 import payment.processing.dto.PaymentPageResponse
@@ -14,12 +16,12 @@ class PaymentService {
     RequestValidationService requestValidationService
 
     PaymentResponse create(String apiKey, CreatePaymentCommand command) {
-        requestValidationService.validate(command, 'Payment request is required')
+        requestValidationService.validate(command, ApiError.PAYMENT_REQUEST_REQUIRED)
         Merchant merchant = merchantService.requireActiveMerchant(apiKey)
 
         String normalizedReference = command.reference.trim()
         if (PaymentTransaction.findByReference(normalizedReference)) {
-            throw new IllegalStateException('A payment with this reference already exists')
+            throw new ApiException(ApiError.PAYMENT_REFERENCE_EXISTS)
         }
 
         PaymentTransaction payment = new PaymentTransaction(
@@ -30,6 +32,7 @@ class PaymentService {
                 status: PaymentStatus.PENDING,
                 merchant: merchant
         )
+        // TODO : signature
 
         payment.save(failOnError: true, flush: true)
 
@@ -38,16 +41,24 @@ class PaymentService {
 
     PaymentResponse capture(String apiKey, String reference) {
         Merchant merchant = merchantService.requireActiveMerchant(apiKey)
+
         PaymentTransaction payment = findOwnedPayment(reference, merchant, true)
 
+        // TODO : ***
+        // unique ( merchant , reference)
+
+        //change the lock to optmestice and help
         if (payment.status != PaymentStatus.PENDING) {
-            String message = payment.status == PaymentStatus.SUCCESS
-                    ? 'Payment already captured'
-                    : 'Only pending payments can be captured'
-            throw new IllegalStateException(message)
+            ApiError error = payment.status == PaymentStatus.SUCCESS
+                    ? ApiError.PAYMENT_ALREADY_CAPTURED
+                    : ApiError.CAPTURE_REQUIRES_PENDING
+            throw new ApiException(error)
         }
 
         payment.status = PaymentStatus.SUCCESS
+
+
+
         payment.save(failOnError: true, flush: true)
 
         PaymentResponse.from(payment)
@@ -58,10 +69,10 @@ class PaymentService {
         PaymentTransaction payment = findOwnedPayment(reference, merchant, true)
 
         if (payment.status != PaymentStatus.SUCCESS) {
-            String message = payment.status == PaymentStatus.REFUNDED
-                    ? 'Payment already refunded'
-                    : 'Only successful payments can be refunded'
-            throw new IllegalStateException(message)
+            ApiError error = payment.status == PaymentStatus.REFUNDED
+                    ? ApiError.PAYMENT_ALREADY_REFUNDED
+                    : ApiError.REFUND_REQUIRES_SUCCESS
+            throw new ApiException(error)
         }
 
         payment.status = PaymentStatus.REFUNDED
@@ -77,9 +88,10 @@ class PaymentService {
     }
 
     @ReadOnly
+
     PaymentPageResponse list(String apiKey, ListPaymentsCommand command) {
         ListPaymentsCommand filters = command ?: new ListPaymentsCommand()
-        requestValidationService.validate(filters, 'Payment filters are required')
+        requestValidationService.validate(filters, ApiError.PAYMENT_FILTERS_REQUIRED)
         Merchant merchant = merchantService.requireActiveMerchant(apiKey)
 
         def result = PaymentTransaction.createCriteria().list(
@@ -98,6 +110,7 @@ class PaymentService {
                 le('dateCreated', filters.toDate)
             }
 
+            // Add index
             order('dateCreated', 'desc')
         }
 
@@ -117,7 +130,7 @@ class PaymentService {
             boolean lock
     ) {
         if (!reference?.trim()) {
-            throw new IllegalArgumentException('Payment reference is required')
+            throw new ApiException(ApiError.PAYMENT_REFERENCE_REQUIRED)
         }
 
         PaymentTransaction payment = PaymentTransaction.findByReferenceAndMerchant(
@@ -127,7 +140,7 @@ class PaymentService {
         )
 
         if (!payment) {
-            throw new NoSuchElementException('Payment not found')
+            throw new ApiException(ApiError.PAYMENT_NOT_FOUND)
         }
 
         payment

@@ -2,6 +2,8 @@ package payment.processing
 
 import payment.processing.dto.CreateMerchantCommand
 import payment.processing.dto.MerchantResponse
+import payment.processing.api.ApiError
+import payment.processing.api.ApiException
 
 import grails.gorm.transactions.ReadOnly
 import grails.gorm.transactions.Transactional
@@ -17,11 +19,11 @@ class MerchantService {
     RequestValidationService requestValidationService
 
     MerchantResponse create(CreateMerchantCommand command) {
-        requestValidationService.validate(command, 'Merchant request is required')
+        requestValidationService.validate(command, ApiError.MERCHANT_REQUEST_REQUIRED)
 
         String normalizedEmail = command.email.trim().toLowerCase(Locale.ROOT)
         if (Merchant.findByEmail(normalizedEmail)) {
-            throw new IllegalStateException('A merchant with this email already exists')
+            throw new ApiException(ApiError.MERCHANT_EMAIL_EXISTS)
         }
 
         Merchant merchant = new Merchant(
@@ -39,12 +41,12 @@ class MerchantService {
     @ReadOnly
     Merchant requireActiveMerchant(String apiKey) {
         if (!apiKey?.trim()) {
-            throw new IllegalArgumentException('API key is required')
+            throw new ApiException(ApiError.API_KEY_REQUIRED)
         }
 
         Merchant merchant = Merchant.findByApiKeyAndActive(apiKey.trim(), true)
         if (!merchant) {
-            throw new NoSuchElementException('Active merchant not found')
+            throw new ApiException(ApiError.ACTIVE_MERCHANT_NOT_FOUND)
         }
 
         merchant
